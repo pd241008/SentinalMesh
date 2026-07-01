@@ -1,162 +1,126 @@
-# SentinelMesh
+# SentinelMesh: Gossip-Propagated Collective Anomaly Detection
 
-**Gossip-propagated collective anomaly detection for distributed network intrusion sensing.**
+**SentinelMesh** is a decentralized anomaly correlation framework designed for distributed network intrusion sensing. Modern network defense typically relies on centralized Security Information and Event Management (SIEM) pipelines, which create latency bottlenecks, incur massive bandwidth costs, and introduce a single point of failure.
 
-SentinelMesh is a decentralized anomaly correlation framework in which independent IDS nodes exchange compact anomaly digests via an epidemic gossip protocol — instead of relying on a centralized SIEM aggregator — to recover detection capability for attacks deliberately fragmented across many targets (slow-rate distributed port scans, low-and-slow credential stuffing, coordinated reconnaissance sweeps) that no single node can see enough of to flag alone.
-
-This repo contains the reference simulator, an independent ML-based validation harness, and a results dashboard, built to generate the empirical results for the SentinelMesh paper (target venue: GSCon 2027).
+SentinelMesh replaces the centralized aggregator with a lightweight, decentralized **gossip-based correlation** mechanism. Independent IDS nodes exchange compact anomaly summaries via an epidemic protocol, utilizing a quorum consensus rule to collectively escalate "low-and-slow" attacks (e.g., distributed port scans, credential stuffing) that appear statistically normal to any single node.
 
 ---
 
-## Status
+## 🏛 Architecture
 
-| Track | Component | Status |
-|---|---|---|
-| Simulator (Go) | `dataset`, `attack` | ✅ done |
-| Simulator (Go) | `scorer` | ✅ done |
-| Simulator (Go) | `node`, `gossip`, `quorum` | 🚧 in progress |
-| Simulator (Go) | `baseline`, `metrics`, `cmd/simulate` | ⬜ not started |
-| ML cross-check (Python) | scorer validation | ⬜ not started |
-| Dashboard (Next.js) | sweep visualization | ⬜ not started |
+### System Topology
+```mermaid
+graph TD
+    subgraph "SentinelMesh (Decentralized Gossip)"
+    N1((Node 1)) <-->|Constant-Size Digest| N2((Node 2))
+    N2 <-->|Constant-Size Digest| N3((Node 3))
+    N3 <-->|Constant-Size Digest| N1
+    N4((Node 4)) <-->|Constant-Size Digest| N2
+    N1 <-->|Constant-Size Digest| N4
+    end
 
-
-
-
----
-
-## Why gossip instead of centralized aggregation
-
-A centralized SIEM pipeline has two structural weaknesses this project is designed around:
-
-1. **Single point of failure + latency bottleneck** — logs traverse the network to one aggregator, get parsed, get correlated; that round-trip can exceed the propagation time of a fast-moving attack.
-2. **Bandwidth that scales with N** — sustained log volume proportional to the number of monitored endpoints, often infeasible for campus networks, IoT gateways, or branch offices without a dedicated SecOps budget.
-
-SentinelMesh borrows the constant-fanout, anti-entropy structure that Cassandra, Dynamo, and Serf use for membership/failure detection, and repurposes it for anomaly-score correlation instead.
-
----
-
-## How it works
-
-1. **Local scoring** — each node `i` computes a local anomaly score `sᵢ(t) ∈ [0,1]` over a sliding window, using a lightweight EWMA z-score deviation scorer (O(1) update, suitable for constrained nodes). Each score is tagged with a coarse category hint `cᵢ(t)` (e.g. `recon`, `dos`) derived from simple heuristics — connection fan-out rate, port-touch diversity.
-2. **Gossip digest exchange** — at fixed intervals, each node builds a constant-size digest `Dᵢ(t) = ⟨node_id, sᵢ(t), cᵢ(t), t⟩` and pushes it to `f` randomly selected peers. Receivers merge into a local digest cache, keyed by source node, within a sliding correlation window `W`.
-3. **Quorum escalation** — a node escalates a collective alert for category `c` if, within its own digest cache restricted to window `W`, the number of distinct nodes reporting an elevated score for `c` meets or exceeds quorum threshold `q`. No node needs direct contact with every contributor — signal reaches it transitively through the mesh.
-
-Formally:
-
-```
-Alert(c, t) = 1[ |{i : sᵢ(t′) > τ_local, cᵢ(t′) = c, t − t′ ≤ W}| ≥ q ]
+    subgraph "Traditional SIEM (Centralized)"
+    E1((Edge 1)) -->|Raw Logs/Flows| Agg[SIEM Aggregator]
+    E2((Edge 2)) -->|Raw Logs/Flows| Agg
+    E3((Edge 3)) -->|Raw Logs/Flows| Agg
+    E4((Edge 4)) -->|Raw Logs/Flows| Agg
+    end
 ```
 
-Three tunable parameters govern the accuracy–overhead trade-off: mesh size `N`, gossip fanout `f`, and quorum threshold `q`.
+### Node Workflow
+```mermaid
+sequenceDiagram
+    participant Traffic as Network Traffic
+    participant Local as Local Scorer (Node i)
+    participant Cache as Digest Cache
+    participant Peers as Network Peers
 
----
-
-## Methodology
-
-### Simulation approach
-The simulator is a **discrete-event simulation in Go**, using goroutines to model independent nodes and channels to model the gossip transport (configurable per-message latency and loss rate). The sim advances in discrete gossip rounds; each round every node selects `f` random peers, exchanges digests, then the quorum rule is re-evaluated. Window `W` and reported convergence latency are both measured in **rounds, not wall-clock time** — this keeps every reported metric on the same axis as the paper's own results (e.g. "2.3 rounds at N=32").
-
-### Dataset
-[UNSW-NB15](https://research.unsw.edu.au/projects/unsw-nb15-dataset) (Moustafa & Slay, MilCIS 2015), standard pre-partitioned train/test split (175,341 / 82,332 records, 49 features).
-
-**Deviation from the original paper draft, and why:** Section IV.B of the initial draft described partitioning by source/destination subnet. The public train/test CSVs don't carry `srcip`/`dstip` — and even the raw captures only contain ~45 synthetic testbed addresses generated by IXIA PerfectStorm, so subnet-based grouping wouldn't produce meaningful per-node diversity regardless. We use **deterministic pseudo-random assignment** across N simulated nodes instead, which is consistent with how most reproducible distributed-IDS evaluations partition this dataset in the literature. The paper's Section IV.B will be updated to describe this precisely rather than claim subnet grouping we aren't doing.
-
-### Attack fragmentation
-Two synthetic fragmentation patterns, applied on top of the baseline partition:
-- **Fragmented reconnaissance** — a logical recon campaign's flows are redistributed round-robin across `k ∈ {4, 8, 16}` nodes, so each node individually observes only `1/k` of total scan volume.
-- **Low-rate distributed DoS** — DoS-category flows fragmented and rate-limited per-node to stay under conventional volumetric thresholds, while aggregate rate across all `k` nodes remains attack-level.
-
-### Baselines
-- **Independent** — zero inter-node communication, pure `τ_local` thresholding per node.
-- **Centralized aggregator** — all nodes forward digests to one aggregator every round, applying the same quorum rule with full visibility, given an equivalent total bandwidth budget to SentinelMesh's gossip traffic (for a fair comparison).
-
-### Metrics
-- **Recall** — campaign flows correctly escalated ÷ total campaign flows.
-- **Per-node bandwidth** — bytes sent × rounds, per node.
-- **Convergence latency** — rounds from campaign onset to first correct escalation.
-
-### Sweep parameters
-`N ∈ {8, 16, 32, 64}` × `f ∈ {2, 3, 4}` × `q` × `k ∈ {4, 8, 16}`, defined declaratively in `simulator/configs/sweep_default.yaml` rather than hardcoded, so scaling the mesh size further (e.g. `N=128, 256`) is a config change, not a code change.
-
-### Independent validation (ML cross-check)
-A second, independent local scorer (Python / scikit-learn — isolation forest or autoencoder) trained on the same UNSW-NB15 partition, run entirely outside the Go simulator, to confirm that quorum-escalation results aren't an artifact of the lightweight EWMA scorer being too crude. Cross-check output lands in `results/crosscheck/`, consumed only by the dashboard — it never feeds back into the Go simulator's own numbers.
-
----
-
-## Repository structure
-
-```
-sentinelmesh/
-├── data/                  # UNSW-NB15 fetch script + raw/processed CSVs
-├── simulator/              # Go — core discrete-event simulator (source of truth for all paper numbers)
-│   ├── cmd/simulate/       # CLI entrypoint, sweep orchestration
-│   ├── internal/
-│   │   ├── dataset/        # CSV loader, Flow struct, category tagging
-│   │   ├── attack/         # node partitioning, k-way fragmentation
-│   │   ├── scorer/         # EWMA local anomaly scorer
-│   │   ├── node/           # per-node state, digest cache
-│   │   ├── gossip/         # round-based push exchange
-│   │   ├── quorum/         # Equation 2 escalation rule (independently testable)
-│   │   ├── baseline/       # independent + centralized baselines
-│   │   └── metrics/        # recall, bandwidth, convergence latency
-│   ├── configs/            # sweep parameters as data
-│   └── testdata/           # small fixtures for unit tests
-├── ml-crosscheck/          # Python — independent scorer validation, decoupled from Go
-├── dashboard/               # Next.js — reads results/ only, never simulator internals
-├── results/                # shared output contract: sweep/, crosscheck/, figures/
-├── docs/
-│   ├── ARCHITECTURE.md     # how the three tracks fit together, data contracts
-│   ├── PAPER_MAPPING.md    # equation/section → file/function map
-│   └── DATASET.md          # provenance, partitioning rationale in full
-└── paper/                  # LaTeX source, figures, references.bib
+    Traffic->>Local: Ingest local flow partition
+    Local->>Local: Compute O(1) EWMA z-score & tag category
+    Local->>Cache: Store self digest 
+    
+    loop Every Gossip Round
+        Local->>Peers: Push Digest to f random peers
+        Peers-->>Cache: Receive incoming peer digests
+        Cache->>Cache: Retain latest digest per peer in window W
+        
+        alt |{peers with score > \tau_{local}}| \ge q
+            Cache->>Cache: Trigger Collective Alert (Quorum Escalation)!
+        end
+    end
 ```
 
-**Design rule:** no track imports another track's code. `simulator/` writes to `results/sweep/`; `ml-crosscheck/` writes to `results/crosscheck/`, reading the dataset independently; `dashboard/` only ever reads from `results/`. This lets three people work in parallel with zero merge conflicts and zero cross-track blocking.
+---
+
+## 📂 Project Structure (Multi-Track Monorepo)
+
+This repository is organized into three parallel tracks to support simulation, machine-learning validation, and data visualization.
+
+- **`simulator/` (Track 1 - Go)**: The core discrete-event simulation engine. Handles the parsing of the UNSW-NB15 dataset, pseudo-random node partitioning, $O(1)$ EWMA scoring, epidemic push-gossip exchange, and the quorum escalation rule.
+- **`ml-crosscheck/` (Track 2 - Python)**: Independent scorer validation. Uses models like Isolation Forests and Autoencoders to cross-check the Go scorer's escalations and generate validation summaries.
+- **`dashboard/` (Track 3 - Next.js)**: A frontend web application for interactive sweep result exploration. Visualizes metrics such as recall, bandwidth overhead, and convergence latency across variables like mesh size ($N$) and fanout ($f$).
+
+*Supporting directories include `data/` (datasets and fetch scripts), `docs/` (architecture & progress tracking), `results/` (shared output contract), and `paper/` (LaTeX sources).*
 
 ---
 
-## Getting started
+## 🚀 Quickstart
+
+### 1. Fetch the Dataset
+The simulation utilizes the standard UNSW-NB15 dataset. Download it using the provided script:
+```bash
+./data/scripts/fetch_dataset.sh
+```
+
+### 2. Run the Simulator
+Navigate to the simulator track and run a parameter sweep using the default configuration values. *(Execution CLI is under active development)*:
+```bash
+cd simulator
+go run cmd/simulate/main.go --config configs/sweep_default.yaml
+```
+
+### 3. View Results
+Results are written as CSV output to the `results/sweep/` directory. You can start the Next.js dashboard to interactively visualize the evaluation metrics:
+```bash
+cd dashboard
+npm install
+npm run dev
+```
+
+---
+
+## 🧪 Testing
+
+### Unit Tests
+Each Go package has accompanying unit tests. Run all simulator tests from the `simulator/` directory:
 
 ```bash
-# 1. Fetch the dataset
-./data/scripts/fetch_dataset.sh
-
-# 2. Run the simulator (small-scale sanity check first)
 cd simulator
-go run ./cmd/simulate --nodes 8 --fanout 2 --quorum 4 --fragment 4
+go test ./... -v
+```
 
-# 3. Run the full sweep
-go run ./cmd/simulate --config configs/sweep_default.yaml --out ../results/sweep/results_$(date +%Y%m%d).csv
+### Integration Tests
+Integration tests covering the full pipeline (data loading → fragmentation → gossip → quorum → metrics) live in `simulator/tests/`:
 
-# 4. (independent) ML cross-check
-cd ../ml-crosscheck
-pip install -r requirements.txt
-python -m crosscheck.evaluate
+```bash
+cd simulator
+go test ./tests/... -v
+```
 
-# 5. (independent) Dashboard
-cd ../dashboard
-npm install && npm run dev
+### Test Data
+A small synthetic CSV dataset is provided at `simulator/testdata/testdata.csv` with 15 flows across multiple attack categories. It is used by both unit and integration tests.
+
+### Running All Tests
+```bash
+cd simulator
+go test ./... -count=1
 ```
 
 ---
 
-## Verification plan
+## 📊 Evaluation Goals
 
-**Automated:**
-- `go test ./simulator/internal/dataset/...` — flow parsing, category tagging
-- `go test ./simulator/internal/attack/...` — k-way fragmentation distribution correctness
-- `go test ./simulator/internal/scorer/...` — EWMA accuracy, O(1) update bound
-- `go test ./simulator/internal/quorum/...` — exact `≥ q` escalation rule, no smoothing/decay
-- `go test ./simulator/internal/gossip/...` — digest merge correctness, window `W` eviction
-
-**Manual:**
-- Run one small-scale simulation (`N=8, f=2, q=4, k=4`), inspect output CSV columns for sane values.
-- Confirm gossip-baseline vs. independent-baseline recall improves as expected, and centralized-baseline recall sits above gossip (expected — full visibility should win, gossip should be close at a fraction of the bandwidth).
-
----
-
-
-
-## License
-
-MIT
+Based on discrete-event simulation using partitioned UNSW-NB15 traffic, this framework aims to measure:
+- **Detection Recall**: The system's ability to recover detection capability for fragmented reconnaissance against baseline isolated edge nodes.
+- **Bandwidth Overhead**: The reduction in peak single-point load compared to a centralized SIEM, tracking per-node payload costs.
+- **Convergence Latency**: The scaling behavior of gossip propagation across varying mesh sizes, measured in discrete gossip rounds.

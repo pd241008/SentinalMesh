@@ -1,0 +1,24 @@
+# Dataset files
+data/raw/
+data/processed/
+
+# Simulation & Run Outputs
+results/sweep/
+results/crosscheck/
+results/figures/
+
+# Go binaries
+simulator/simulate
+
+# OS specific files
+.DS_Store
+
+# IDEs and environments
+.vscode/
+.idea/
+*.swp
+__pycache__/
+.pytest_cache/
+
+
+docs/

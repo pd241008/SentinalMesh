@@ -26,15 +26,45 @@ This document tracks the completion status of the SentinelMesh project across it
   - [x] Implement `cmd/simulate/main.go`: CLI entry point.
 
 ## Track 2: ML Crosscheck (Python)
-**Status: Pending**
-- [ ] Setup `pyproject.toml` and testing frameworks.
-- [ ] Data loader reusing partitioned UNSW-NB15 data.
-- [ ] Scorer models (Isolation Forest / Autoencoder).
-- [ ] Automated validation and comparison reports.
+**Status: In Progress — Phase 2**
+
+### Phase 2: ML Validation Pipeline
+- [x] **Sub-phase 2.1: Project Setup & Data Pipeline**
+  - [x] Setup `pyproject.toml`, virtual env, and testing frameworks (pytest).
+  - [x] Implement data loader for partitioned UNSW-NB15 CSV outputs (reuses dataset format from Track 1).
+  - [x] Write unit tests for data loader and preprocessing.
+- [ ] **Sub-phase 2.2: Scorer Models & Training**
+  - [ ] Implement Isolation Forest scorer with configurable hyperparameters.
+  - [ ] Implement Autoencoder-based scorer (PyTorch or TensorFlow).
+  - [ ] Train both models on partitioned normal traffic and evaluate on attack flows.
+  - [ ] Write unit tests for model scoring and inference.
+- [ ] **Sub-phase 2.3: Validation & Reporting**
+  - [ ] Implement automated validation runner comparing Go scorer vs ML models.
+  - [ ] Generate comparison reports (precision, recall, F1 per attack category).
+  - [ ] Write integration tests for the full validation pipeline.
+  - [ ] Output results to `results/crosscheck/` for dashboard consumption.
 
 ## Track 3: Dashboard (Next.js)
-**Status: Pending**
-- [ ] Scaffolding and build config (Next.js, TS).
-- [ ] Data loader for `results/sweep` and `results/crosscheck`.
-- [ ] Interactive charting components.
-- [ ] Sweep visualization and ML cross-check views.
+**Status: In Progress — Phase 3**
+
+### Phase 3: Visualization & Frontend
+- [ ] **Sub-phase 3.1: Scaffolding & Build Config**
+  - [ ] Initialize Next.js project with TypeScript and Tailwind CSS.
+  - [ ] Configure ESLint, Prettier, and project directory structure.
+  - [ ] Create shared TypeScript types for sweep and crosscheck results.
+  - [ ] Set up basic layout (navbar, sidebar, page routing).
+- [ ] **Sub-phase 3.2: Data Layer & API**
+  - [ ] Implement data loader for `results/sweep/` CSV output.
+  - [ ] Implement data loader for `results/crosscheck/` comparison reports.
+  - [ ] Create client-side data fetching hooks with caching.
+  - [ ] Write unit tests for data parsing and transformation.
+- [ ] **Sub-phase 3.3: Interactive Visualization Components**
+  - [ ] Implement sweep results chart (recall vs N/f/q/k with toggles).
+  - [ ] Implement bandwidth overhead comparison chart (gossip vs centralized).
+  - [ ] Implement convergence latency heatmap.
+  - [ ] Write component tests using React Testing Library.
+- [ ] **Sub-phase 3.4: Integration & Views**
+  - [ ] Build sweep overview page with parameter selection UI.
+  - [ ] Build ML crosscheck comparison view (Go scorer vs ML models).
+  - [ ] Add responsive design and dark mode support.
+  - [ ] Write end-to-end tests for key user flows.

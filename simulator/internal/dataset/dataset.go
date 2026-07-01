@@ -8,14 +8,11 @@ import (
 	"strings"
 )
 
-// Flow represents a single network flow derived from the dataset
 type Flow struct {
 	ID        int
 	Timestamp float64
 	Category  string
 	IsAttack  bool
-
-	// Features used by the local scorer
 	Sbytes int
 	Dbytes int
 	Spkts  int
@@ -23,8 +20,6 @@ type Flow struct {
 	Rate   float64
 }
 
-// LoadCSV parses a UNSW-NB15 dataset CSV file. It handles dynamic column mapping
-// based on the header row to extract relevant features for the simulation.
 func LoadCSV(path string) ([]Flow, error) {
 	file, err := os.Open(path)
 	if err != nil {

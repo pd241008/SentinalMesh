@@ -7,18 +7,20 @@ import (
 )
 
 type Gossiper struct {
-	nodes  []*node.Node
-	fanout int
-	window int
-	rng    *rand.Rand
+	nodes        []*node.Node
+	fanout       int
+	window       int
+	rng          *rand.Rand
+	MessagesSent map[int]int
 }
 
 func New(nodes []*node.Node, fanout int, window int, seed int64) *Gossiper {
 	return &Gossiper{
-		nodes:  nodes,
-		fanout: fanout,
-		window: window,
-		rng:    rand.New(rand.NewSource(seed)),
+		nodes:        nodes,
+		fanout:       fanout,
+		window:       window,
+		rng:          rand.New(rand.NewSource(seed)),
+		MessagesSent: make(map[int]int),
 	}
 }
 
@@ -36,6 +38,7 @@ func (g *Gossiper) Round(round int) {
 		for _, peer := range peers {
 			peer.ReceiveDigest(*digest)
 		}
+		g.MessagesSent[sender.ID] += len(peers)
 	}
 
 	g.evictStale(round)

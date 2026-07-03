@@ -5,18 +5,18 @@ import (
 	"github.com/pd241008/sentinelmesh/simulator/internal/quorum"
 )
 
-type AlertTimeline map[int]map[string]bool
+type AlertTimeline map[int]map[string][]int
 
 type BaselineResult struct {
 	Alerts       AlertTimeline
 	TotalDigests int
 }
 
-func addAlert(alerts AlertTimeline, round int, category string) {
+func addAlert(alerts AlertTimeline, round int, category string, corrobs []int) {
 	if alerts[round] == nil {
-		alerts[round] = make(map[string]bool)
+		alerts[round] = make(map[string][]int)
 	}
-	alerts[round][category] = true
+	alerts[round][category] = corrobs
 }
 
 func RunIndependent(nodes []*node.Node, window int, totalRounds int, quorumThreshold int) BaselineResult {
@@ -33,8 +33,8 @@ func RunIndependent(nodes []*node.Node, window int, totalRounds int, quorumThres
 			}
 		}
 		for _, n := range nodes {
-			for _, cat := range quorum.Evaluate(n.GetCache(), 1, window, round) {
-				addAlert(alerts, round, cat)
+			for cat, corrobs := range quorum.Evaluate(n.GetCache(), 1, window, round) {
+				addAlert(alerts, round, cat, corrobs)
 			}
 		}
 	}
@@ -57,8 +57,8 @@ func RunCentralized(nodes []*node.Node, window int, totalRounds int, quorumThres
 				totalDigests++
 			}
 		}
-		for _, cat := range quorum.Evaluate(centralCache, quorumThreshold, window, round) {
-			addAlert(alerts, round, cat)
+		for cat, corrobs := range quorum.Evaluate(centralCache, quorumThreshold, window, round) {
+			addAlert(alerts, round, cat, corrobs)
 		}
 		for id, digests := range centralCache {
 			var fresh []node.Digest

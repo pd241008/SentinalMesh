@@ -8,6 +8,11 @@ import (
 	"github.com/pd241008/sentinelmesh/simulator/internal/dataset"
 )
 
+type Campaign struct {
+	Category string
+	FlowIDs  []int
+}
+
 func hashID(id int) uint32 {
 	h := fnv.New32a()
 	b := []byte{
@@ -20,20 +25,31 @@ func hashID(id int) uint32 {
 	return h.Sum32()
 }
 
-func DistributeFlows(flows []dataset.Flow, numNodes int, k int, attackCategories []string) [][]dataset.Flow {
+func DistributeFlows(flows []dataset.Flow, numNodes int, k int, attackCategories []string) ([][]dataset.Flow, []Campaign) {
+	return distributeFlowsInternal(flows, nil, numNodes, k, attackCategories, false)
+}
+
+func DistributeFlowsControl(flows []dataset.Flow, normalPool []dataset.Flow, numNodes int, k int, attackCategories []string) ([][]dataset.Flow, []Campaign) {
+	return distributeFlowsInternal(flows, normalPool, numNodes, k, attackCategories, true)
+}
+
+func distributeFlowsInternal(flows []dataset.Flow, normalPool []dataset.Flow, numNodes int, k int, attackCategories []string, isControl bool) ([][]dataset.Flow, []Campaign) {
 	partitions := make([][]dataset.Flow, numNodes)
-	
+
 	attackCatMap := make(map[string]bool)
 	for _, c := range attackCategories {
 		attackCatMap[strings.ToLower(c)] = true
 	}
 
 	rrCount := 0
+	normalPoolIdx := 0
+	var campaigns []Campaign
+	var currentCampaign *Campaign
 
 	for _, flow := range flows {
 		cat := strings.ToLower(flow.Category)
 		isTargetAttack := flow.IsAttack && attackCatMap[cat]
-		
+
 		var assignedNode int
 		if isTargetAttack {
 			actualK := k
@@ -42,11 +58,36 @@ func DistributeFlows(flows []dataset.Flow, numNodes int, k int, attackCategories
 			}
 			assignedNode = rrCount % actualK
 			rrCount++
+
+			if currentCampaign == nil || currentCampaign.Category != cat {
+				if currentCampaign != nil {
+					campaigns = append(campaigns, *currentCampaign)
+				}
+				currentCampaign = &Campaign{Category: cat}
+			}
+			currentCampaign.FlowIDs = append(currentCampaign.FlowIDs, flow.ID)
+
+			if isControl {
+				// Replace the flow with a normal flow from the pool
+				if len(normalPool) > 0 {
+					replacementFlow := normalPool[normalPoolIdx%len(normalPool)]
+					normalPoolIdx++
+					// Assign using hash based on original ID to ensure deterministic but unstructured scatter
+					assignedNode = int(hashID(flow.ID) % uint32(numNodes))
+					// Crucial: preserve original ID and Timestamp so metrics matching and sorting still align
+					replacementFlow.ID = flow.ID
+					replacementFlow.Timestamp = flow.Timestamp
+					flow = replacementFlow
+				}
+			}
 		} else {
 			assignedNode = int(hashID(flow.ID) % uint32(numNodes))
 		}
-		
+
 		partitions[assignedNode] = append(partitions[assignedNode], flow)
+	}
+	if currentCampaign != nil {
+		campaigns = append(campaigns, *currentCampaign)
 	}
 
 	for i := 0; i < numNodes; i++ {
@@ -55,5 +96,5 @@ func DistributeFlows(flows []dataset.Flow, numNodes int, k int, attackCategories
 		})
 	}
 
-	return partitions
+	return partitions, campaigns
 }

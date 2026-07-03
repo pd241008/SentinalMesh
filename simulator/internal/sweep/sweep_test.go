@@ -22,9 +22,6 @@ func TestLoadConfig(t *testing.T) {
 	if len(cfg.Sweep.F) != 3 {
 		t.Fatalf("expected 3 f values, got %d", len(cfg.Sweep.F))
 	}
-	if len(cfg.Sweep.Q) != 3 {
-		t.Fatalf("expected 3 q values, got %d", len(cfg.Sweep.Q))
-	}
 	if len(cfg.Sweep.K) != 3 {
 		t.Fatalf("expected 3 k values, got %d", len(cfg.Sweep.K))
 	}
@@ -41,7 +38,6 @@ func TestRun(t *testing.T) {
 	cfg := &Config{}
 	cfg.Sweep.N = []int{4}
 	cfg.Sweep.F = []int{1}
-	cfg.Sweep.Q = []int{2}
 	cfg.Sweep.K = []int{2}
 	cfg.Sweep.W = 3
 

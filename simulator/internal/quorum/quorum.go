@@ -4,7 +4,7 @@ import (
 	"github.com/pd241008/sentinelmesh/simulator/internal/node"
 )
 
-func Evaluate(cache map[int][]node.Digest, quorum int, window int, currentRound int) []string {
+func Evaluate(cache map[int][]node.Digest, quorum int, window int, currentRound int) map[string][]int {
 	categoryCount := make(map[string]int)
 
 	for _, digests := range cache {
@@ -22,10 +22,19 @@ func Evaluate(cache map[int][]node.Digest, quorum int, window int, currentRound 
 		}
 	}
 
-	var alerts []string
+	alerts := make(map[string][]int)
 	for cat, count := range categoryCount {
 		if count >= quorum {
-			alerts = append(alerts, cat)
+			var nodeIDs []int
+			for srcID, digests := range cache {
+				for _, d := range digests {
+					if d.Category == cat && currentRound-d.Round <= window {
+						nodeIDs = append(nodeIDs, srcID)
+						break
+					}
+				}
+			}
+			alerts[cat] = nodeIDs
 		}
 	}
 

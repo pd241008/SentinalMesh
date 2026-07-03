@@ -95,8 +95,10 @@ func (s *Scorer) ScoreFlow(flow dataset.Flow) (float64, string, bool) {
 	fanoutDst := float64(flow.CtDstLtm) / (float64(flow.CtDstSportLtm) + 1.0)
 	reconScore := 1.0 / (fanoutDst + 0.1)
 
-	// Threshold gating and relative margin tie-breaker
-	ewmaMargin := ewmaScore / s.thresholds.Ewma
+	// Threshold gating with priority-based tie-breaker.
+	// DoS and Recon are the paper's measured categories and take priority.
+	// EWMA/generic is a fallback for residual anomalies — it should never
+	// steal a classification from a specific detector that also fired.
 	dosMargin := dosScore / s.thresholds.DoS
 	reconMargin := reconScore / s.thresholds.Recon
 
@@ -105,12 +107,7 @@ func (s *Scorer) ScoreFlow(flow dataset.Flow) (float64, string, bool) {
 	guessedCategory := "normal"
 	finalScore := ewmaScore
 
-	if ewmaMargin > maxMargin {
-		maxMargin = ewmaMargin
-		guessedCategory = "generic"
-		isAnomalous = true
-		finalScore = ewmaScore
-	}
+	// Priority 1: DoS and Recon (paper's measured categories)
 	if dosMargin > maxMargin {
 		maxMargin = dosMargin
 		guessedCategory = "dos"
@@ -124,5 +121,16 @@ func (s *Scorer) ScoreFlow(flow dataset.Flow) (float64, string, bool) {
 		finalScore = reconScore
 	}
 
+	// Priority 2: EWMA/generic — only if no specific detector fired
+	if !isAnomalous {
+		ewmaMargin := ewmaScore / s.thresholds.Ewma
+		if ewmaMargin > 1.0 {
+			guessedCategory = "generic"
+			isAnomalous = true
+			finalScore = ewmaScore
+		}
+	}
+
 	return finalScore, guessedCategory, isAnomalous
 }
+

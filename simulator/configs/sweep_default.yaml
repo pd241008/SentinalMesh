@@ -5,17 +5,26 @@ sweep:
   # Gossip fanout parameters
   f: [2, 3, 4]
   
-  # Quorum thresholds (bounded by k=8 for pure signal detection)
-  q: [2, 4, 6, 8]
-  
   # Fragmentation configurations (attack distribution)
   k: [4, 8, 16]
   
+  # q (quorum threshold) is computed dynamically per k in sweep.go
+  # as {2, 4, 6, ..., k} to enforce q <= k structurally.
+  # It is NOT specified here to prevent config-drift bugs.
+  
   # Correlation window (discrete gossip rounds)
-  # Matches the methodology in Section IV.A
   W: 5
   
   thresholds:
     threshold_recon: 1.66
     threshold_dos: 0.82
-    threshold_ewma: 0.8
+    # EWMA/generic is a fallback detector for residual categories.
+    # Calibrated to Normal P95=0.8925 (from UNSW-NB15 training set,
+    # 56k normal flows, Go-matching EWMA scorer) — same percentile-based
+    # method used for threshold_recon and threshold_dos.
+    # Note: EWMA metrics are NOT reported in the paper's sweep tables
+    # (only Recon and DoS are tracked). EWMA only fires as a fallback
+    # when neither DoS nor Recon exceeds threshold. Its impact on sweep
+    # results is minimal. This value is set for correctness/conservatism
+    # to prevent silent degradation if EWMA ever becomes non-fallback.
+    threshold_ewma: 0.89

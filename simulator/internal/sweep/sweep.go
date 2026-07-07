@@ -84,7 +84,7 @@ func LoadConfig(path string) (*Config, error) {
 	return &cfg, nil
 }
 
-func Run(cfg *Config, allFlows []dataset.Flow, alpha float64, threshold float64, seed int64, outputDir string, coldStart bool, clustered bool) error {
+func Run(cfg *Config, allFlows []dataset.Flow, alpha float64, threshold float64, seed int64, outputDir string, coldStart bool, clustered bool, staggerRounds int) error {
 	var results []RunResult
 	idx := int64(0)
 
@@ -102,8 +102,8 @@ func Run(cfg *Config, allFlows []dataset.Flow, alpha float64, threshold float64,
 
 	for _, N := range cfg.Sweep.N {
 		for _, k := range cfg.Sweep.K {
-			tPartitions, tCampaigns := fragment.DistributeFlows(allFlows, N, k, AttackCategories, clustered)
-			cPartitions, _ := fragment.DistributeFlowsControl(allFlows, normalPool, N, k, AttackCategories, clustered)
+			tPartitions, tCampaigns := fragment.DistributeFlows(allFlows, N, k, AttackCategories, clustered, staggerRounds)
+			cPartitions, _ := fragment.DistributeFlowsControl(allFlows, normalPool, N, k, AttackCategories, clustered, staggerRounds)
 
 			totalRounds := 0
 			for _, p := range tPartitions {

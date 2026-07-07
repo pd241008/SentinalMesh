@@ -25,15 +25,15 @@ func hashID(id int) uint32 {
 	return h.Sum32()
 }
 
-func DistributeFlows(flows []dataset.Flow, numNodes int, k int, attackCategories []string, clustered bool) ([][]dataset.Flow, []Campaign) {
-	return distributeFlowsInternal(flows, nil, numNodes, k, attackCategories, false, clustered)
+func DistributeFlows(flows []dataset.Flow, numNodes int, k int, attackCategories []string, clustered bool, staggerRounds int) ([][]dataset.Flow, []Campaign) {
+	return distributeFlowsInternal(flows, nil, numNodes, k, attackCategories, false, clustered, staggerRounds)
 }
 
-func DistributeFlowsControl(flows []dataset.Flow, normalPool []dataset.Flow, numNodes int, k int, attackCategories []string, clustered bool) ([][]dataset.Flow, []Campaign) {
-	return distributeFlowsInternal(flows, normalPool, numNodes, k, attackCategories, true, clustered)
+func DistributeFlowsControl(flows []dataset.Flow, normalPool []dataset.Flow, numNodes int, k int, attackCategories []string, clustered bool, staggerRounds int) ([][]dataset.Flow, []Campaign) {
+	return distributeFlowsInternal(flows, normalPool, numNodes, k, attackCategories, true, clustered, staggerRounds)
 }
 
-func distributeFlowsInternal(flows []dataset.Flow, normalPool []dataset.Flow, numNodes int, k int, attackCategories []string, isControl bool, clustered bool) ([][]dataset.Flow, []Campaign) {
+func distributeFlowsInternal(flows []dataset.Flow, normalPool []dataset.Flow, numNodes int, k int, attackCategories []string, isControl bool, clustered bool, staggerRounds int) ([][]dataset.Flow, []Campaign) {
 	partitions := make([][]dataset.Flow, numNodes)
 
 	attackCatMap := make(map[string]bool)
@@ -84,8 +84,8 @@ func distributeFlowsInternal(flows []dataset.Flow, normalPool []dataset.Flow, nu
 				if len(normalPool) > 0 {
 					replacementFlow := normalPool[normalPoolIdx%len(normalPool)]
 					normalPoolIdx++
-					// Assign using hash based on original ID to ensure deterministic but unstructured scatter
-					assignedNode = int(hashID(flow.ID) % uint32(numNodes))
+					// Assign using the exact same target-node placement as the real campaign to maintain partition lengths and density structure
+					assignedNode = rrCount % actualK
 					// Crucial: preserve original ID and Timestamp so metrics matching and sorting still align
 					replacementFlow.ID = flow.ID
 					replacementFlow.Timestamp = flow.Timestamp
@@ -108,5 +108,55 @@ func distributeFlowsInternal(flows []dataset.Flow, normalPool []dataset.Flow, nu
 		})
 	}
 
+	if staggerRounds > 0 {
+		partitions = applyStagger(partitions, campaigns, staggerRounds, numNodes)
+	}
+
 	return partitions, campaigns
+}
+
+func applyStagger(partitions [][]dataset.Flow, campaigns []Campaign, staggerRounds int, numNodes int) [][]dataset.Flow {
+	for _, camp := range campaigns {
+		if len(camp.FlowIDs) <= 1 {
+			continue
+		}
+		for i, flowID := range camp.FlowIDs {
+			// Rounding to nearest integer for better distribution
+			delay := int(float64(i*staggerRounds)/float64(len(camp.FlowIDs)-1) + 0.5)
+			if delay == 0 {
+				continue
+			}
+
+			for n := 0; n < numNodes; n++ {
+				found := false
+				for pIdx, f := range partitions[n] {
+					if f.ID == flowID {
+						part := partitions[n]
+						targetIdx := pIdx + delay
+
+						if targetIdx >= len(part) {
+							padding := targetIdx - len(part) + 1
+							for p := 0; p < padding; p++ {
+								part = append(part, dataset.Flow{Category: "normal", Timestamp: f.Timestamp + float64(p+1)})
+							}
+						}
+
+						theFlow := part[pIdx]
+						// Remove from pIdx
+						part = append(part[:pIdx], part[pIdx+1:]...)
+						// Insert at targetIdx
+						part = append(part[:targetIdx], append([]dataset.Flow{theFlow}, part[targetIdx:]...)...)
+
+						partitions[n] = part
+						found = true
+						break
+					}
+				}
+				if found {
+					break
+				}
+			}
+		}
+	}
+	return partitions
 }

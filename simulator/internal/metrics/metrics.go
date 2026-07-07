@@ -137,7 +137,6 @@ func Compute(nodes []*node.Node, allFlows []dataset.Flow, tAlerts baseline.Alert
 									totalExactMatches++
 								} else {
 									totalNoiseCoincidences++
-									correctedDetectedReconFlows++
 								}
 							} else {
 								correctedDetectedReconFlows++
@@ -156,7 +155,6 @@ func Compute(nodes []*node.Node, allFlows []dataset.Flow, tAlerts baseline.Alert
 									totalExactMatches++
 								} else {
 									totalNoiseCoincidences++
-									correctedDetectedDosFlows++
 								}
 							} else {
 								correctedDetectedDosFlows++
@@ -184,7 +182,6 @@ func Compute(nodes []*node.Node, allFlows []dataset.Flow, tAlerts baseline.Alert
 									totalExactMatches++
 								} else {
 									totalNoiseCoincidences++
-									correctedDetectedAnalysisFlows++
 								}
 							} else {
 								correctedDetectedAnalysisFlows++

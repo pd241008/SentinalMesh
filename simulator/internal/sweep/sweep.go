@@ -48,10 +48,14 @@ type RunResult struct {
 	GossipFlowDoSRecall     float64
 	GossipCorrectedFlowReconRecall float64
 	GossipCorrectedFlowDoSRecall   float64
+	GossipBernoulliFlowReconRecall float64
+	GossipBernoulliFlowDoSRecall   float64
+	GossipBernoulliFlowAnalysisRecall float64
 	GossipWindowReconRecall float64
 	GossipWindowDoSRecall   float64
 	GossipReconFPR          float64
 	GossipDoSFPR            float64
+	GossipAnalysisFPR       float64
 	GossipBandwidth         float64
 	GossipLatency           float64
 	IndepFlowReconRecall    float64
@@ -103,9 +107,6 @@ func Run(cfg *Config, allFlows []dataset.Flow, alpha float64, threshold float64,
 	for _, N := range cfg.Sweep.N {
 		for _, k := range cfg.Sweep.K {
 			tPartitions, tCampaigns := fragment.DistributeFlows(allFlows, N, k, AttackCategories, clustered, staggerRounds)
-			cPartitionsRecon, _ := fragment.DistributeFlowsControl(allFlows, normalPool, N, k, []string{"reconnaissance"}, clustered, staggerRounds)
-			cPartitionsDoS, _ := fragment.DistributeFlowsControl(allFlows, normalPool, N, k, []string{"dos"}, clustered, staggerRounds)
-			cPartitionsAnalysis, _ := fragment.DistributeFlowsControl(allFlows, normalPool, N, k, []string{"analysis"}, clustered, staggerRounds)
 
 			totalRounds := 0
 			for _, p := range tPartitions {
@@ -132,12 +133,15 @@ func Run(cfg *Config, allFlows []dataset.Flow, alpha float64, threshold float64,
 					gossipNodesT := makeNodes(N, tPartitions, alpha, cfg.Sweep.W, thresh)
 					gResultT := runGossip(gossipNodesT, f, cfg.Sweep.W, q, totalRounds, seed+idx, coldStart)
 
+					cPartitionsRecon, _ := fragment.DistributeFlowsControl(allFlows, normalPool, N, k, AttackCategories, "reconnaissance", clustered, staggerRounds)
 					gossipNodesCRecon := makeNodes(N, cPartitionsRecon, alpha, cfg.Sweep.W, thresh)
 					gResultCRecon := runGossip(gossipNodesCRecon, f, cfg.Sweep.W, q, totalRounds, seed+idx, coldStart)
 					
+					cPartitionsDoS, _ := fragment.DistributeFlowsControl(allFlows, normalPool, N, k, AttackCategories, "dos", clustered, staggerRounds)
 					gossipNodesCDoS := makeNodes(N, cPartitionsDoS, alpha, cfg.Sweep.W, thresh)
 					gResultCDoS := runGossip(gossipNodesCDoS, f, cfg.Sweep.W, q, totalRounds, seed+idx, coldStart)
 					
+					cPartitionsAnalysis, _ := fragment.DistributeFlowsControl(allFlows, normalPool, N, k, AttackCategories, "analysis", clustered, staggerRounds)
 					gossipNodesCAnalysis := makeNodes(N, cPartitionsAnalysis, alpha, cfg.Sweep.W, thresh)
 					gResultCAnalysis := runGossip(gossipNodesCAnalysis, f, cfg.Sweep.W, q, totalRounds, seed+idx, coldStart)
 
@@ -147,10 +151,14 @@ func Run(cfg *Config, allFlows []dataset.Flow, alpha float64, threshold float64,
 					result.GossipFlowDoSRecall = gMetrics.FlowDoSRecall
 					result.GossipCorrectedFlowReconRecall = gMetrics.CorrectedFlowReconRecall
 					result.GossipCorrectedFlowDoSRecall = gMetrics.CorrectedFlowDoSRecall
+					result.GossipBernoulliFlowReconRecall = gMetrics.BernoulliFlowReconRecall
+					result.GossipBernoulliFlowDoSRecall = gMetrics.BernoulliFlowDoSRecall
+					result.GossipBernoulliFlowAnalysisRecall = gMetrics.BernoulliFlowAnalysisRecall
 					result.GossipWindowReconRecall = gMetrics.WindowReconRecall
 					result.GossipWindowDoSRecall = gMetrics.WindowDoSRecall
 					result.GossipReconFPR = gMetrics.ReconFPR
 					result.GossipDoSFPR = gMetrics.DoSFPR
+					result.GossipAnalysisFPR = gMetrics.AnalysisFPR
 					result.GossipBandwidth = gMetrics.BandwidthKBps
 					result.GossipLatency = gMetrics.AvgLatency
 
@@ -270,7 +278,7 @@ func writeCSV(results []RunResult, outputDir string) error {
 
 	header := []string{
 		"N", "f", "q", "k", "W",
-		"gossip_flow_recon_recall", "gossip_flow_dos_recall", "gossip_corrected_flow_recon_recall", "gossip_corrected_flow_dos_recall", "gossip_window_recon_recall", "gossip_window_dos_recall", "gossip_recon_fpr", "gossip_dos_fpr", "gossip_bandwidth", "gossip_latency",
+		"gossip_flow_recon_recall", "gossip_flow_dos_recall", "gossip_corrected_flow_recon_recall", "gossip_corrected_flow_dos_recall", "gossip_bernoulli_flow_recon_recall", "gossip_bernoulli_flow_dos_recall", "gossip_bernoulli_flow_analysis_recall", "gossip_window_recon_recall", "gossip_window_dos_recall", "gossip_recon_fpr", "gossip_dos_fpr", "gossip_analysis_fpr", "gossip_bandwidth", "gossip_latency",
 		"indep_flow_recon_recall", "indep_flow_dos_recall", "indep_window_recon_recall", "indep_window_dos_recall", "indep_recon_fpr", "indep_dos_fpr", "indep_bandwidth", "indep_latency",
 		"cent_flow_recon_recall", "cent_flow_dos_recall", "cent_window_recon_recall", "cent_window_dos_recall", "cent_recon_fpr", "cent_dos_fpr", "cent_bandwidth", "cent_latency",
 	}
@@ -281,7 +289,7 @@ func writeCSV(results []RunResult, outputDir string) error {
 	for _, r := range results {
 		row := []string{
 			intStr(r.N), intStr(r.F), intStr(r.Q), intStr(r.K), intStr(r.W),
-			floatStr(r.GossipFlowReconRecall), floatStr(r.GossipFlowDoSRecall), floatStr(r.GossipCorrectedFlowReconRecall), floatStr(r.GossipCorrectedFlowDoSRecall), floatStr(r.GossipWindowReconRecall), floatStr(r.GossipWindowDoSRecall), floatStr(r.GossipReconFPR), floatStr(r.GossipDoSFPR), floatStr(r.GossipBandwidth), floatStr(r.GossipLatency),
+			floatStr(r.GossipFlowReconRecall), floatStr(r.GossipFlowDoSRecall), floatStr(r.GossipCorrectedFlowReconRecall), floatStr(r.GossipCorrectedFlowDoSRecall), floatStr(r.GossipBernoulliFlowReconRecall), floatStr(r.GossipBernoulliFlowDoSRecall), floatStr(r.GossipBernoulliFlowAnalysisRecall), floatStr(r.GossipWindowReconRecall), floatStr(r.GossipWindowDoSRecall), floatStr(r.GossipReconFPR), floatStr(r.GossipDoSFPR), floatStr(r.GossipAnalysisFPR), floatStr(r.GossipBandwidth), floatStr(r.GossipLatency),
 			floatStr(r.IndepFlowReconRecall), floatStr(r.IndepFlowDoSRecall), floatStr(r.IndepWindowReconRecall), floatStr(r.IndepWindowDoSRecall), floatStr(r.IndepReconFPR), floatStr(r.IndepDoSFPR), floatStr(r.IndepBandwidth), floatStr(r.IndepLatency),
 			floatStr(r.CentFlowReconRecall), floatStr(r.CentFlowDoSRecall), floatStr(r.CentWindowReconRecall), floatStr(r.CentWindowDoSRecall), floatStr(r.CentReconFPR), floatStr(r.CentDoSFPR), floatStr(r.CentBandwidth), floatStr(r.CentLatency),
 		}

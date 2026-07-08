@@ -26,15 +26,15 @@ func New(nodes []*node.Node, fanout int, window int, seed int64) *Gossiper {
 
 func (g *Gossiper) Round(round int) {
 	for _, sender := range g.nodes {
+		// UNCONDITIONALLY advance RNG state so Treatment and Control remain synchronized
+		indices := g.rng.Perm(len(g.nodes))
+		
 		digest, ok := sender.ProcessFlowsForRound(round)
-		if !ok {
-			continue
-		}
-		if digest == nil {
+		if !ok || digest == nil {
 			continue
 		}
 
-		peers := g.selectPeers(sender.ID)
+		peers := g.selectPeersFromIndices(sender.ID, indices)
 		for _, peer := range peers {
 			peer.ReceiveDigest(*digest)
 		}
@@ -44,8 +44,7 @@ func (g *Gossiper) Round(round int) {
 	g.evictStale(round)
 }
 
-func (g *Gossiper) selectPeers(senderID int) []*node.Node {
-	indices := g.rng.Perm(len(g.nodes))
+func (g *Gossiper) selectPeersFromIndices(senderID int, indices []int) []*node.Node {
 	var selected []*node.Node
 	for _, idx := range indices {
 		if g.nodes[idx].ID != senderID {
@@ -57,6 +56,8 @@ func (g *Gossiper) selectPeers(senderID int) []*node.Node {
 	}
 	return selected
 }
+
+
 
 func (g *Gossiper) evictStale(round int) {
 	for _, n := range g.nodes {

@@ -26,14 +26,14 @@ func hashID(id int) uint32 {
 }
 
 func DistributeFlows(flows []dataset.Flow, numNodes int, k int, attackCategories []string, clustered bool, staggerRounds int) ([][]dataset.Flow, []Campaign) {
-	return distributeFlowsInternal(flows, nil, numNodes, k, attackCategories, false, clustered, staggerRounds)
+	return distributeFlowsInternal(flows, nil, numNodes, k, attackCategories, "", false, clustered, staggerRounds)
 }
 
-func DistributeFlowsControl(flows []dataset.Flow, normalPool []dataset.Flow, numNodes int, k int, attackCategories []string, clustered bool, staggerRounds int) ([][]dataset.Flow, []Campaign) {
-	return distributeFlowsInternal(flows, normalPool, numNodes, k, attackCategories, true, clustered, staggerRounds)
+func DistributeFlowsControl(flows []dataset.Flow, normalPool []dataset.Flow, numNodes int, k int, attackCategories []string, targetCategory string, clustered bool, staggerRounds int) ([][]dataset.Flow, []Campaign) {
+	return distributeFlowsInternal(flows, normalPool, numNodes, k, attackCategories, targetCategory, true, clustered, staggerRounds)
 }
 
-func distributeFlowsInternal(flows []dataset.Flow, normalPool []dataset.Flow, numNodes int, k int, attackCategories []string, isControl bool, clustered bool, staggerRounds int) ([][]dataset.Flow, []Campaign) {
+func distributeFlowsInternal(flows []dataset.Flow, normalPool []dataset.Flow, numNodes int, k int, attackCategories []string, targetCategory string, isControl bool, clustered bool, staggerRounds int) ([][]dataset.Flow, []Campaign) {
 	partitions := make([][]dataset.Flow, numNodes)
 
 	attackCatMap := make(map[string]bool)
@@ -79,13 +79,11 @@ func distributeFlowsInternal(flows []dataset.Flow, normalPool []dataset.Flow, nu
 			}
 			currentCampaign.FlowIDs = append(currentCampaign.FlowIDs, flow.ID)
 
-			if isControl {
+			if isControl && cat == targetCategory {
 				// Replace the flow with a normal flow from the pool
 				if len(normalPool) > 0 {
 					replacementFlow := normalPool[normalPoolIdx%len(normalPool)]
 					normalPoolIdx++
-					// Assign using the exact same target-node placement as the real campaign to maintain partition lengths and density structure
-					assignedNode = rrCount % actualK
 					// Crucial: preserve original ID and Timestamp so metrics matching and sorting still align
 					replacementFlow.ID = flow.ID
 					replacementFlow.Timestamp = flow.Timestamp
